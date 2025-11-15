@@ -41,3 +41,4 @@ pids/
 
 # Misc
 .cache/
+.vercel
