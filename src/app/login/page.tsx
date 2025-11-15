@@ -2,20 +2,20 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Shield, ExternalLink, Zap, Mail as MailIcon, BarChart3, HelpCircle, Loader2, LogIn } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useRouter } from 'next/navigation';
+import { Header } from '@/components/email-sender/Header';
+import { Loader2, LogIn, Shield, HelpCircle, ExternalLink, Mail, Zap, BarChart3, CheckCircle2, Sparkles, Users, ChevronDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { verifyCredentialsAndLogin, getUserSession } from '@/app/actions';
 import { Separator } from '@/components/ui/separator';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PixelBlast from '@/components/PixelBlast';
-import { Header } from '@/components/email-sender/Header';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -78,7 +78,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground relative overflow-hidden">
+    <div className="min-h-screen bg-background text-foreground relative">
       <PixelBlast 
         variant="circle"
         pixelSize={4}
@@ -93,7 +93,7 @@ export default function LoginPage() {
       />
       <div className="relative z-10">
         <Header />
-        <main className="pt-20 pb-6 px-4 sm:px-6 lg:px-8 min-h-[calc(100vh-5rem)] flex items-center overflow-x-hidden">
+        <main className="pt-20 pb-6 px-4 sm:px-6 lg:px-8 min-h-[calc(100vh-5rem)] flex items-center">
         <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-8 items-center w-full">
           
           {/* Login Form - Left Side */}
@@ -102,7 +102,7 @@ export default function LoginPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
           >
-            <Card className="glass-effect max-w-full overflow-hidden">
+            <Card className="glass-effect">
                 <CardHeader className="text-center pb-3">
                     <CardTitle className="text-xl font-headline">Welcome User</CardTitle>
                     <CardDescription className="text-xs">Enter your email credentials to get started</CardDescription>
@@ -177,7 +177,7 @@ export default function LoginPage() {
                                       How to get App Password?
                                     </Button>
                                   </DialogTrigger>
-                                  <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
+                                  <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
                                     <DialogHeader>
                                       <DialogTitle className="flex items-center gap-2">
                                         <HelpCircle className="h-5 w-5 text-primary" />
