@@ -11,13 +11,22 @@ if (!apiKey) {
   // Create a mock genkit instance for development without API key
   ai = genkit({
     plugins: [],
-    model: undefined,
   });
 } else {
-  ai = genkit({
-    plugins: [googleAI({ apiKey })],
-    model: 'googleai/gemini-2.5-flash',
-  });
+  console.log('✅ Gemini API key found, initializing...');
+  try {
+    ai = genkit({
+      plugins: [googleAI({ apiKey })],
+      model: 'googleai/gemini-2.5-flash',
+    });
+    console.log('✅ Gemini AI initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize Gemini AI:', error);
+    // Fallback to basic genkit
+    ai = genkit({
+      plugins: [],
+    });
+  }
 }
 
 export { ai };

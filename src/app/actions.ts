@@ -8,12 +8,62 @@ import https from 'https';
 import sslRootCas from 'ssl-root-cas';
 
 
-// Prefer environment variables with sensible defaults
-const SMTP_SERVER = process.env.SMTP_SERVER || 'smtp.office365.com';
-const SMTP_PORT = Number(process.env.SMTP_PORT || '587');
-
 // Fix for SSL issues in some environments
 https.globalAgent.options.ca = sslRootCas.create();
+
+// Email provider configurations
+interface SMTPConfig {
+    host: string;
+    port: number;
+}
+
+const SMTP_CONFIGS: Record<string, SMTPConfig> = {
+    gmail: {
+        host: 'smtp.gmail.com',
+        port: 587,
+    },
+    outlook: {
+        host: 'smtp.office365.com',
+        port: 587,
+    },
+    hotmail: {
+        host: 'smtp.office365.com',
+        port: 587,
+    },
+    live: {
+        host: 'smtp.office365.com',
+        port: 587,
+    },
+};
+
+/**
+ * Detects the email provider from the email address and returns appropriate SMTP configuration
+ */
+function getSMTPConfig(email: string): SMTPConfig {
+    const domain = email.split('@')[1]?.toLowerCase();
+
+    if (!domain) {
+        // Fallback to environment variables or Outlook default
+        return {
+            host: process.env.SMTP_SERVER || 'smtp.office365.com',
+            port: Number(process.env.SMTP_PORT || '587'),
+        };
+    }
+
+    // Extract the provider name from the domain (e.g., gmail.com -> gmail)
+    const provider = domain.split('.')[0];
+
+    // Check if we have a configuration for this provider
+    if (SMTP_CONFIGS[provider]) {
+        return SMTP_CONFIGS[provider];
+    }
+
+    // For custom domains or unknown providers, use environment variables or defaults
+    return {
+        host: process.env.SMTP_SERVER || 'smtp.office365.com',
+        port: Number(process.env.SMTP_PORT || '587'),
+    };
+}
 
 
 async function setSessionCookie(email: string, appPassword: string) {
@@ -27,7 +77,7 @@ async function setSessionCookie(email: string, appPassword: string) {
     });
 }
 
-export async function getServerSession(): Promise<{email: string; loginTime: string} | null> {
+export async function getServerSession(): Promise<{ email: string; loginTime: string } | null> {
     const cookieStore = await cookies();
     const cookie = cookieStore.get('SENDER_SESSION')?.value;
     if (!cookie) return null;
@@ -39,11 +89,14 @@ export async function getServerSession(): Promise<{email: string; loginTime: str
     }
 }
 
-export async function verifyCredentialsAndLogin(email: string, appPassword: string): Promise<{success: boolean; error?: string;}> {
-    
+export async function verifyCredentialsAndLogin(email: string, appPassword: string): Promise<{ success: boolean; error?: string; }> {
+
+    // Get SMTP configuration based on email provider
+    const smtpConfig = getSMTPConfig(email);
+
     const transporter = nodemailer.createTransport({
-        host: SMTP_SERVER,
-        port: SMTP_PORT,
+        host: smtpConfig.host,
+        port: smtpConfig.port,
         secure: false, // Use STARTTLS
         requireTLS: true, // Force TLS
         auth: {
@@ -64,7 +117,7 @@ export async function verifyCredentialsAndLogin(email: string, appPassword: stri
                         <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px;">Account Verified!</h1>
                     </div>
                     <p style="margin: 20px 0; font-size: 16px; color: #555; line-height: 1.6;">Hi <strong>${email}</strong>,</p>
-                    <p style="margin: 20px 0; font-size: 15px; color: #666; line-height: 1.7;">Welcome to <strong>ZapSend AI</strong>! Your Outlook account has been successfully authenticated and verified. You're all set to start crafting and sending professional email campaigns.</p>
+                    <p style="margin: 20px 0; font-size: 15px; color: #666; line-height: 1.7;">Welcome to <strong>ZapSend AI</strong>! Your email account has been successfully authenticated and verified. You're all set to start crafting and sending professional email campaigns.</p>
                     <div style="background: #f0f4ff; border-left: 4px solid #6366f1; padding: 16px; margin: 30px 0; border-radius: 4px;">
                         <p style="margin: 0; font-size: 14px; color: #4f46e5; font-weight: 600;">🚀 You can now:</p>
                         <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 14px; color: #555; line-height: 1.8;">
@@ -88,18 +141,18 @@ export async function verifyCredentialsAndLogin(email: string, appPassword: stri
             to: email,
             subject: verificationSubject,
             html: verificationHtml,
-            from: email, 
+            from: email,
         });
-        
+
         await setSessionCookie(email, appPassword);
-        
+
         return { success: true };
 
     } catch (error: any) {
         console.error("Verification failed:", error);
         let errorMessage = 'An unknown error occurred during verification.';
         if (error.code === 'EAUTH') {
-            errorMessage = 'Invalid email or app password. Please check your credentials and ensure app passwords are set up correctly in your Outlook account security settings.';
+            errorMessage = 'Invalid email or app password. Please check your credentials and ensure app passwords are set up correctly in your email provider\'s security settings.';
         } else if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ESOCKET') {
             errorMessage = 'Could not connect to the mail server. It might be a network issue or the server is busy. Please try again later.';
         }
@@ -107,7 +160,7 @@ export async function verifyCredentialsAndLogin(email: string, appPassword: stri
     }
 }
 
-export async function getUserSession(): Promise<{email: string; name?: string;} | null> {
+export async function getUserSession(): Promise<{ email: string; name?: string; } | null> {
     const cookieStore = await cookies();
     const cookie = cookieStore.get('SENDER_SESSION')?.value;
     if (!cookie) return null;
@@ -121,22 +174,22 @@ export async function getUserSession(): Promise<{email: string; name?: string;} 
     }
 }
 
-export async function updateUserName(name: string): Promise<{success: boolean}> {
+export async function updateUserName(name: string): Promise<{ success: boolean }> {
     const session = await getVerifiedSender();
     if (!session) {
         throw new Error("User not authenticated");
     }
-    
+
     // For now, just return success without storing in Firestore
     // to avoid Firebase permission issues
     console.log('User name update requested for:', session.email, 'name:', name);
-    
+
     revalidatePath('/', 'layout');
     return { success: true };
 }
 
 
-export async function getVerifiedSender(): Promise<{email: string; appPassword: string} | undefined> {
+export async function getVerifiedSender(): Promise<{ email: string; appPassword: string } | undefined> {
     const cookieStore = await cookies();
     const cookie = cookieStore.get('SENDER_SESSION')?.value;
     if (!cookie) return undefined;
@@ -151,27 +204,27 @@ export async function getVerifiedSender(): Promise<{email: string; appPassword: 
 }
 
 export async function getSubjectSuggestions(input: OptimizeSubjectLineInput) {
-  try {
-    const result = await optimizeSubjectLine(input);
-    return result.suggestedSubjectLines;
-  } catch (error) {
-    console.error('Error getting subject suggestions:', error);
-    throw new Error('Failed to generate subject suggestions. Please try again.');
-  }
+    try {
+        const result = await optimizeSubjectLine(input);
+        return result.suggestedSubjectLines;
+    } catch (error) {
+        console.error('Error getting subject suggestions:', error);
+        throw new Error('Failed to generate subject suggestions. Please try again.');
+    }
 }
 
 interface AttachmentData {
-  filename: string;
-  content: string; // base64 encoded content
-  contentType: string;
-  cid?: string; // For embedded images
+    filename: string;
+    content: string; // base64 encoded content
+    contentType: string;
+    cid?: string; // For embedded images
 }
 
 interface SendEmailParams {
-  to: string | string[];
-  subject: string;
-  html: string;
-  attachments?: AttachmentData[];
+    to: string | string[];
+    subject: string;
+    html: string;
+    attachments?: AttachmentData[];
 }
 
 async function sendEmailInternal(transporter: nodemailer.Transporter, params: SendEmailParams & { from: string }) {
@@ -191,23 +244,26 @@ async function sendEmailInternal(transporter: nodemailer.Transporter, params: Se
             cid: att.cid,
         }))
     };
-    
+
     await transporter.verify();
     await transporter.sendMail(mailOptions);
 }
 
 
-export async function sendEmail({ to, subject, html, attachments = [] }: SendEmailParams): Promise<{success: boolean, error?: string}> {
+export async function sendEmail({ to, subject, html, attachments = [] }: SendEmailParams): Promise<{ success: boolean, error?: string }> {
     const senderSession = await getVerifiedSender();
 
     if (!senderSession?.email || !senderSession?.appPassword) {
         return { success: false, error: 'User not logged in. Please log in again.' };
     }
     const { email: senderEmail, appPassword: authPass } = senderSession;
-    
+
+    // Get SMTP configuration based on email provider
+    const smtpConfig = getSMTPConfig(senderEmail);
+
     const transporter = nodemailer.createTransport({
-        host: SMTP_SERVER,
-        port: SMTP_PORT,
+        host: smtpConfig.host,
+        port: smtpConfig.port,
         secure: false, // Use STARTTLS
         requireTLS: true,
         auth: {

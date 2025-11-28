@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Progress } from '@/components/ui/progress';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { UploadCloud, Mail, Users, Paperclip, AlertTriangle, CheckCircle2, XCircle, Info, Trash2, Redo, Image as ImageIcon, Send, ShieldCheck, Rocket, Loader2, User } from 'lucide-react';
+import { Mail, Users, FileText, Loader2, Send, Rocket, Trash2, Redo, User, AlertTriangle, Info, ShieldCheck, PaperclipIcon as Paperclip, ImageIcon, Check, Plus, Upload, Edit3, CheckCircle2, Download, Calendar, Clock, Save, FolderOpen, Copy } from 'lucide-react';
 import { SubjectOptimizer } from './SubjectOptimizer';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -24,112 +24,116 @@ import { sendEmail, getUserSession } from '@/app/actions';
 import { Textarea } from '@/components/ui/textarea';
 import { convertLinksInHtml } from '@/lib/utils';
 import { FileDropzone } from '@/components/ui/file-dropzone';
+import { getScheduledEmails, saveScheduledEmail, deleteScheduledEmail, updateScheduledEmailStatus, TIMEZONES, type ScheduledEmail } from '@/lib/scheduler';
+import { getCampaigns, saveCampaign, deleteCampaign, duplicateCampaign, type Campaign } from '@/lib/campaign-manager';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 type Mode = 'personalized' | 'bcc';
 type CSVRow = { [key: string]: string };
 export type SendStatus = { email: string; status: 'Sent' | 'Failed' | 'Skipped'; error?: string };
 export type ValidationSummary = {
-    total: number;
-    valid: number;
-    invalid: number;
-    missingColumns: string[];
-    extraColumns: string[];
+  total: number;
+  valid: number;
+  invalid: number;
+  missingColumns: string[];
+  extraColumns: string[];
 };
 
 const useStickyState = (defaultValue: any, key: string) => {
-    const [value, setValue] = useState(() => {
-      if (typeof window === 'undefined') {
-        return defaultValue;
-      }
-      try {
-        const stickyValue = window.localStorage.getItem(key);
-        return stickyValue !== null && stickyValue !== 'undefined'
-          ? JSON.parse(stickyValue)
-          : defaultValue;
-      } catch {
-        return defaultValue;
-      }
-    });
-  
-    useEffect(() => {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, JSON.stringify(value));
-      }
-    }, [key, value]);
-  
-    return [value, setValue];
+  const [value, setValue] = useState(() => {
+    if (typeof window === 'undefined') {
+      return defaultValue;
+    }
+    try {
+      const stickyValue = window.localStorage.getItem(key);
+      return stickyValue !== null && stickyValue !== 'undefined'
+        ? JSON.parse(stickyValue)
+        : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    }
+  }, [key, value]);
+
+  return [value, setValue];
 };
 
 
 const parseCSV = (text: string): { headers: string[], rows: CSVRow[] } => {
-    const lines = text.trim().split(/\r?\n/);
-    
-    const parseLine = (line: string): string[] => {
-        const values = [];
-        let current = '';
-        let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            if (char === '"') {
-                if (inQuotes && line[i+1] === '"') {
-                    current += '"';
-                    i++; // Skip next quote
-                } else {
-                    inQuotes = !inQuotes;
-                }
-            } else if (char === ',' && !inQuotes) {
-                values.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
+  const lines = text.trim().split(/\r?\n/);
+
+  const parseLine = (line: string): string[] => {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          inQuotes = !inQuotes;
         }
+      } else if (char === ',' && !inQuotes) {
         values.push(current.trim());
-        return values;
-    };
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    values.push(current.trim());
+    return values;
+  };
 
-    const headers = parseLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
-    
-    const rows = lines.slice(1).map(line => {
-        if (!line.trim()) return null;
-        const values = parseLine(line);
-        return headers.reduce((obj, header, index) => {
-            obj[header] = values[index] ? values[index].replace(/^"|"$/g, '') : '';
-            return obj;
-        }, {} as CSVRow);
-    }).filter(row => row !== null) as CSVRow[];
+  const headers = parseLine(lines[0]).map(h => h.replace(/^"|"$/g, ''));
 
-    return { headers, rows };
+  const rows = lines.slice(1).map(line => {
+    if (!line.trim()) return null;
+    const values = parseLine(line);
+    return headers.reduce((obj, header, index) => {
+      obj[header] = values[index] ? values[index].replace(/^"|"$/g, '') : '';
+      return obj;
+    }, {} as CSVRow);
+  }).filter(row => row !== null) as CSVRow[];
+
+  return { headers, rows };
 };
 
 const StepCard = ({ title, description, children, step, currentStep }: { title: string; description: string; children: React.ReactNode; step: number; currentStep: number }) => (
-    <Card className={`transition-opacity duration-500 glass-effect ${currentStep >= step ? 'opacity-100' : 'opacity-40'}`}>
-      <CardHeader>
-        <div className="flex items-center gap-4">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${currentStep >= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-            {currentStep > step ? <CheckCircle2 size={24} /> : step}
-          </div>
-          <div>
-            <CardTitle className="font-headline">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
+  <Card className={`transition-opacity duration-500 glass-effect ${currentStep >= step ? 'opacity-100' : 'opacity-40'}`}>
+    <CardHeader>
+      <div className="flex items-center gap-4">
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${currentStep >= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+          {currentStep > step ? <CheckCircle2 size={24} /> : step}
         </div>
-      </CardHeader>
-      <AnimatePresence>
-        {currentStep >= step && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ opacity: { duration: 0.2 }, height: { duration: 0.3, ease: 'easeInOut' } }}
-            className="overflow-hidden"
-          >
-            <CardContent>{children}</CardContent>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </Card>
-  );
+        <div>
+          <CardTitle className="font-headline">{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </div>
+      </div>
+    </CardHeader>
+    <AnimatePresence>
+      {currentStep >= step && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ opacity: { duration: 0.2 }, height: { duration: 0.3, ease: 'easeInOut' } }}
+          className="overflow-hidden"
+        >
+          <CardContent>{children}</CardContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </Card>
+);
 
 const initialCsvData: CSVRow[] = [];
 const initialCsvHeaders: string[] = [];
@@ -147,82 +151,84 @@ export function EmailDispatcher() {
   const [attachments, setAttachments] = useState<File[]>(initialAttachments);
   const [bannerImage, setBannerImage] = useStickyState<string | null>(null, 'emailDispatcher:bannerImage');
   const [bannerImageName, setBannerImageName] = useStickyState('', 'emailDispatcher:bannerImageName');
-  
+
   const [isSending, setIsSending] = useState(false);
   const [sendStatus, setSendStatus] = useState<SendStatus[]>([]);
   const [progress, setProgress] = useState(0);
   const [currentlySendingTo, setCurrentlySendingTo] = useState('');
   const [currentReviewTab, setCurrentReviewTab] = useState('editor');
-  
+
   const [testEmail, setTestEmail] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testEmailSent, setTestEmailSent] = useState(false);
   const [testEmailApproved, setTestEmailApproved] = useState(false);
+  const [inputMode, setInputMode] = useStickyState<'file' | 'direct'>('direct', 'emailDispatcher:inputMode'); // Default to direct input
   const [showBannerEditor, setShowBannerEditor] = useState(false);
   const [showTestReminder, setShowTestReminder] = useState(false);
 
   const router = useRouter();
   const { toast } = useToast();
   const editorRef = useRef<HTMLTextAreaElement>(null);
-  
+
   const templatePlaceholders = useMemo(() => {
     const currentTemplate = editorRef.current ? editorRef.current.value : rawTemplate;
     if (!currentTemplate) return [];
-    const matches = currentTemplate.match(/<([^<>]+)>/g);
+    // Changed to {{Name}} format to avoid HTML tag conflicts
+    const matches = currentTemplate.match(/\{\{([^}]+)\}\}/g);
     if (!matches) return [];
-    return Array.from(new Set(matches.map(p => p.substring(1, p.length - 1))));
+    return Array.from(new Set(matches.map(p => p.substring(2, p.length - 2))));
   }, [rawTemplate, editorRef.current?.value]);
 
   const processFile = (file: File, type: 'template' | 'csv' | 'attachment' | 'banner') => {
     const reader = new FileReader();
-  
+
     reader.onload = (event) => {
-        const content = event.target?.result as string;
-  
-        if (type === 'template') {
-            if (!file.name.endsWith('.txt') && !file.name.endsWith('.md')) {
-                toast({ variant: 'destructive', title: 'Invalid File', description: 'Please upload a .txt or .md template file.' });
-                return;
-            }
-            setRawTemplate(content);
-            setTemplateFileName(file.name);
-            if (step === 2 && subject) setStep(3);
-        } else if (type === 'csv') {
-            if (!file.name.endsWith('.csv')) {
-                toast({ variant: 'destructive', title: 'Invalid File', description: 'Please upload a .csv data file.' });
-                return;
-            }
-            try {
-                const { headers, rows } = parseCSV(content);
-                if (!headers.includes('Email')) {
-                    throw new Error("CSV must contain 'Email' column.");
-                }
-                
-                setCsvData(rows);
-                setCsvHeaders(headers);
-                setCsvFileName(file.name);
-                if (step === 3) setStep(4);
-            } catch (error: any) {
-                toast({ variant: 'destructive', title: 'CSV Parsing Error', description: error.message || 'Could not parse CSV file.' });
-            }
-        } else if (type === 'attachment') {
-            setAttachments((prev) => [...prev, file]);
-        } else if (type === 'banner') {
-            if (!file.type.startsWith('image/')) {
-                toast({ variant: 'destructive', title: 'Invalid File', description: 'Please upload an image file.' });
-                return;
-            }
-            setBannerImage(content); // This is a data URI
-            setBannerImageName(file.name);
+      const content = event.target?.result as string;
+
+      if (type === 'template') {
+        if (!file.name.endsWith('.txt') && !file.name.endsWith('.md') && !file.name.endsWith('.html')) {
+          toast({ variant: 'destructive', title: 'Invalid File', description: 'Please upload a .txt, .md, or .html template file.' });
+          return;
         }
+        setRawTemplate(content);
+        setTemplateFileName(file.name);
+        if (step === 2 && subject) setStep(3);
+      } else if (type === 'csv') {
+        if (!file.name.endsWith('.csv')) {
+          toast({ variant: 'destructive', title: 'Invalid File', description: 'Please upload a .csv data file.' });
+          return;
+        }
+        try {
+          const { headers, rows } = parseCSV(content);
+          if (!headers.includes('Email')) {
+            throw new Error("CSV must contain 'Email' column.");
+          }
+
+          setCsvData(rows);
+          setCsvHeaders(headers);
+          setCsvFileName(file.name);
+          if (step === 3) setStep(4);
+        } catch (error: any) {
+          toast({ variant: 'destructive', title: 'CSV Parsing Error', description: error.message || 'Could not parse CSV file.' });
+        }
+      } else if (type === 'attachment') {
+        setAttachments((prev) => [...prev, file]);
+      } else if (type === 'banner') {
+        if (!file.type.startsWith('image/')) {
+          toast({ variant: 'destructive', title: 'Invalid File', description: 'Please upload an image file.' });
+          return;
+        }
+        setBannerImage(content); // This is a data URI
+        setBannerImageName(file.name);
+      }
     };
-    
+
     if (type === 'banner') {
-        reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
     } else {
-        reader.readAsText(file);
+      reader.readAsText(file);
     }
-    
+
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, type: 'template' | 'csv' | 'attachment' | 'banner') => {
@@ -231,21 +237,21 @@ export function EmailDispatcher() {
     processFile(file, type);
     e.target.value = ''; // Reset file input
   };
-  
+
   const { validRows, invalidRows, validationSummary } = useMemo(() => {
     if (csvData.length === 0) return { validRows: [], invalidRows: [], validationSummary: null };
-    
+
     const missingColumns = mode === 'personalized' ? templatePlaceholders.filter(ph => !csvHeaders.includes(ph)) : [];
-    
+
     const validated = csvData.map(row => {
       const missingFields: string[] = [];
       if (!row['Email'] || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row['Email'])) {
         missingFields.push('Email (Invalid)');
       }
       if (mode === 'personalized') {
-          templatePlaceholders.forEach(ph => {
-              if (row[ph] === undefined || row[ph] === '') missingFields.push(ph);
-          });
+        templatePlaceholders.forEach(ph => {
+          if (row[ph] === undefined || row[ph] === '') missingFields.push(ph);
+        });
       }
       return { ...row, missingFields };
     });
@@ -254,11 +260,11 @@ export function EmailDispatcher() {
     const invalid = validated.filter(row => row.missingFields.length > 0);
 
     const summary: ValidationSummary = {
-        total: csvData.length,
-        valid: valid.length,
-        invalid: invalid.length,
-        missingColumns: [...new Set(missingColumns)],
-        extraColumns: csvHeaders.filter(h => h !== 'Email' && !templatePlaceholders.includes(h))
+      total: csvData.length,
+      valid: valid.length,
+      invalid: invalid.length,
+      missingColumns: [...new Set(missingColumns)],
+      extraColumns: csvHeaders.filter(h => h !== 'Email' && !templatePlaceholders.includes(h))
     };
 
     return {
@@ -272,15 +278,16 @@ export function EmailDispatcher() {
     let bodyWithPlaceholders = templateContent;
 
     if (mode === 'personalized' && row) {
-      bodyWithPlaceholders = bodyWithPlaceholders.replace(/<([^<>]+)>/g, (_, placeholder) => {
-        const value = String(row[placeholder] || `&lt;${placeholder}&gt;`);
-        
+      // Changed to {{Name}} format to avoid HTML tag conflicts
+      bodyWithPlaceholders = bodyWithPlaceholders.replace(/\{\{([^}]+)\}\}/g, (_, placeholder) => {
+        const value = String(row[placeholder] || `{{${placeholder}}}`);
+
         // Convert URLs in CSV data to hyperlinks
         if (value.match(/^https?:\/\//i) || value.match(/^www\./i)) {
           const href = value.startsWith('www.') ? `http://${value}` : value;
           return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color: #F23E36; text-decoration: underline;">${value}</a>`;
         }
-        
+
         return value;
       });
     }
@@ -288,10 +295,28 @@ export function EmailDispatcher() {
     const bannerHtml = bannerImage
       ? `<img src="cid:banner-image" alt="Banner" style="width:100%;max-width:600px;height:auto;display:block;margin:0 auto 16px auto;"/>`
       : '';
-    
+
+    // Check if content is HTML (starts with <!DOCTYPE or <html>)
+    const isHTMLContent = bodyWithPlaceholders.trim().toLowerCase().startsWith('<!doctype') ||
+      bodyWithPlaceholders.trim().toLowerCase().startsWith('<html');
+
     // Process markdown if the template is a .md file
     let processedBody = bodyWithPlaceholders;
-    if (templateFileName && templateFileName.endsWith('.md')) {
+
+    if (isHTMLContent) {
+      // It's HTML - use as-is, just add banner if needed
+      if (bannerHtml) {
+        // Try to insert banner after <body> tag
+        const bodyTagRegex = /(<body[^>]*>)/i;
+        if (bodyTagRegex.test(processedBody)) {
+          processedBody = processedBody.replace(bodyTagRegex, `$1${bannerHtml}`);
+        } else {
+          // No body tag, prepend banner
+          processedBody = bannerHtml + processedBody;
+        }
+      }
+      return processedBody; // Return HTML as-is
+    } else if (templateFileName && templateFileName.endsWith('.md')) {
       processedBody = marked(bodyWithPlaceholders);
       // Convert URLs in markdown-generated HTML to hyperlinks with brand color
       processedBody = convertLinksInHtml(processedBody);
@@ -303,7 +328,7 @@ export function EmailDispatcher() {
       });
       processedBody = processedBody.replace(/\n/g, '<br />');
     }
-  
+
     return `<div style="font-family: Inter, sans-serif; color: hsl(var(--foreground)); line-height: 1.6;">${bannerHtml}${processedBody}</div>`;
   };
 
@@ -316,16 +341,16 @@ export function EmailDispatcher() {
 
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = error => reject(error);
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = error => reject(error);
     });
   };
 
   const handleSend = async () => {
     if (isSending) return;
-    
+
     const currentTemplate = editorRef.current?.value || rawTemplate;
     setRawTemplate(currentTemplate);
 
@@ -336,131 +361,131 @@ export function EmailDispatcher() {
 
     const attachmentData = await Promise.all(
       attachments.map(async (file) => ({
-          filename: file.name,
-          content: await fileToBase64(file),
-          contentType: file.type,
+        filename: file.name,
+        content: await fileToBase64(file),
+        contentType: file.type,
       }))
     );
-    
+
     if (bannerImage) {
-        attachmentData.push({
-            filename: bannerImageName,
-            content: bannerImage.split(',')[1],
-            contentType: bannerImage.match(/data:(.*);/)?.[1] || 'image/png',
-            cid: 'banner-image',
-        });
+      attachmentData.push({
+        filename: bannerImageName,
+        content: bannerImage.split(',')[1],
+        contentType: bannerImage.match(/data:(.*);/)?.[1] || 'image/png',
+        cid: 'banner-image',
+      });
     }
 
     if (mode === 'bcc') {
-        setCurrentlySendingTo(`all ${validRows.length} recipients (BCC)`);
-        const recipients = validRows.map(row => row.Email);
-        const html = generateEmailBody(rawTemplate); // Use raw template, no personalization
-        const result = await sendEmail({ to: recipients, subject, html, attachments: attachmentData });
-        
-        const bccStatus = recipients.map(email => ({
-            email,
-            status: result.success ? 'Sent' : ('Failed' as 'Sent' | 'Failed'),
-            error: result.error,
-        }));
-        setSendStatus(bccStatus);
-        finalSendStatus = [...bccStatus];
-        setProgress(100);
+      setCurrentlySendingTo(`all ${validRows.length} recipients (BCC)`);
+      const recipients = validRows.map(row => row.Email);
+      const html = generateEmailBody(rawTemplate); // Use raw template, no personalization
+      const result = await sendEmail({ to: recipients, subject, html, attachments: attachmentData });
+
+      const bccStatus = recipients.map(email => ({
+        email,
+        status: result.success ? 'Sent' : ('Failed' as 'Sent' | 'Failed'),
+        error: result.error,
+      }));
+      setSendStatus(bccStatus);
+      finalSendStatus = [...bccStatus];
+      setProgress(100);
 
     } else if (mode === 'personalized') {
-        let temporarySendStatus: SendStatus[] = [];
-        for (let i = 0; i < validRows.length; i++) {
-            const row = validRows[i];
-            setCurrentlySendingTo(row.Email);
-            const html = generateEmailBody(currentTemplate, row);
-            const result = await sendEmail({ to: row.Email, subject, html, attachments: attachmentData });
-            
-            const currentStatus: SendStatus = { email: row.Email, status: result.success ? 'Sent' : 'Failed', error: result.error };
-            temporarySendStatus.push(currentStatus);
-            setSendStatus([...temporarySendStatus]);
-            setProgress(((i + 1) / validRows.length) * 100);
-        }
-        finalSendStatus = [...temporarySendStatus];
+      let temporarySendStatus: SendStatus[] = [];
+      for (let i = 0; i < validRows.length; i++) {
+        const row = validRows[i];
+        setCurrentlySendingTo(row.Email);
+        const html = generateEmailBody(currentTemplate, row);
+        const result = await sendEmail({ to: row.Email, subject, html, attachments: attachmentData });
+
+        const currentStatus: SendStatus = { email: row.Email, status: result.success ? 'Sent' : 'Failed', error: result.error };
+        temporarySendStatus.push(currentStatus);
+        setSendStatus([...temporarySendStatus]);
+        setProgress(((i + 1) / validRows.length) * 100);
+      }
+      finalSendStatus = [...temporarySendStatus];
     }
-    
+
     invalidRows.forEach(row => {
-        finalSendStatus.push({ email: row.Email || 'Invalid Email Entry', status: 'Skipped', error: `Missing fields: ${row.missingFields.join(', ')}` });
+      finalSendStatus.push({ email: row.Email || 'Invalid Email Entry', status: 'Skipped', error: `Missing fields: ${row.missingFields.join(', ')}` });
     });
 
     if (typeof window !== 'undefined' && validationSummary) {
-        window.localStorage.setItem('emailReport:status', JSON.stringify(finalSendStatus));
-        window.localStorage.setItem('emailReport:summary', JSON.stringify({...validationSummary, invalid: invalidRows.length}));
-        window.localStorage.setItem('emailReport:subject', JSON.stringify(subject));
-        
-        // Save email campaign record for analytics
-        const session = await getUserSession();
-        if (session?.email) {
-          const successCount = finalSendStatus.filter(s => s.status === 'Sent').length;
-          const failureCount = finalSendStatus.filter(s => s.status === 'Failed').length;
-          const totalRecipients = validRows.length;
-          
-          const emailRecord = {
-            id: `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            email: session.email,
-            subject: subject,
-            sentAt: new Date().toISOString(),
-            recipientCount: totalRecipients,
-            successCount: successCount,
-            failureCount: failureCount,
-            status: successCount === totalRecipients ? 'success' : (successCount > 0 ? 'partial' : 'failed'),
-            senderEmail: session.email,
-          };
-          
-          console.log('Saving email record:', emailRecord);
-          
-          // Get existing records and add new one
-          const existingRecords = JSON.parse(window.localStorage.getItem('emailHistory:records') || '[]');
-          existingRecords.unshift(emailRecord); // Add to beginning
-          window.localStorage.setItem('emailHistory:records', JSON.stringify(existingRecords));
-          
-          console.log('Total email records saved:', existingRecords.length);
-        }
-        
-        router.push('/dashboard');
+      window.localStorage.setItem('emailReport:status', JSON.stringify(finalSendStatus));
+      window.localStorage.setItem('emailReport:summary', JSON.stringify({ ...validationSummary, invalid: invalidRows.length }));
+      window.localStorage.setItem('emailReport:subject', JSON.stringify(subject));
+
+      // Save email campaign record for analytics
+      const session = await getUserSession();
+      if (session?.email) {
+        const successCount = finalSendStatus.filter(s => s.status === 'Sent').length;
+        const failureCount = finalSendStatus.filter(s => s.status === 'Failed').length;
+        const totalRecipients = validRows.length;
+
+        const emailRecord = {
+          id: `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          email: session.email,
+          subject: subject,
+          sentAt: new Date().toISOString(),
+          recipientCount: totalRecipients,
+          successCount: successCount,
+          failureCount: failureCount,
+          status: successCount === totalRecipients ? 'success' : (successCount > 0 ? 'partial' : 'failed'),
+          senderEmail: session.email,
+        };
+
+        console.log('Saving email record:', emailRecord);
+
+        // Get existing records and add new one
+        const existingRecords = JSON.parse(window.localStorage.getItem('emailHistory:records') || '[]');
+        existingRecords.unshift(emailRecord); // Add to beginning
+        window.localStorage.setItem('emailHistory:records', JSON.stringify(existingRecords));
+
+        console.log('Total email records saved:', existingRecords.length);
+      }
+
+      router.push('/dashboard');
     }
 
     setCurrentlySendingTo('');
     toast({ title: "Dispatch Complete", description: `Processed ${validRows.length} emails.` });
     setIsSending(false);
   };
-  
+
   const handleSendTest = async () => {
     if (!testEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
-        toast({ variant: 'destructive', title: 'Invalid Email', description: 'Please enter a valid email address to send a test.' });
-        return;
+      toast({ variant: 'destructive', title: 'Invalid Email', description: 'Please enter a valid email address to send a test.' });
+      return;
     }
     setIsSendingTest(true);
     setTestEmailSent(false);
-    
+
     const currentTemplate = editorRef.current?.value || rawTemplate;
     setRawTemplate(currentTemplate);
 
     const firstRow = validRows[0] || csvData[0] || {};
     const html = generateEmailBody(currentTemplate, firstRow);
-    
+
     const attachmentData = await Promise.all(
-        attachments.map(async (file) => ({
-            filename: file.name,
-            content: await fileToBase64(file),
-            contentType: file.type,
-        }))
+      attachments.map(async (file) => ({
+        filename: file.name,
+        content: await fileToBase64(file),
+        contentType: file.type,
+      }))
     );
 
     if (bannerImage) {
-        attachmentData.push({
-            filename: bannerImageName,
-            content: bannerImage.split(',')[1],
-            contentType: bannerImage.match(/data:(.*);/)?.[1] || 'image/png',
-            cid: 'banner-image',
-        });
+      attachmentData.push({
+        filename: bannerImageName,
+        content: bannerImage.split(',')[1],
+        contentType: bannerImage.match(/data:(.*);/)?.[1] || 'image/png',
+        cid: 'banner-image',
+      });
     }
 
     const result = await sendEmail({ to: testEmail, subject, html, attachments: attachmentData });
-    
+
     if (result.success) {
       toast({ title: "Test Email Sent", description: `A test email has been sent to ${testEmail}. Please check your inbox and approve.` });
       setTestEmailSent(true);
@@ -472,49 +497,49 @@ export function EmailDispatcher() {
 
   const resetAll = () => {
     if (typeof window !== 'undefined') {
-        Object.keys(window.localStorage).forEach(key => {
-            if (key.startsWith('emailDispatcher:') || key.startsWith('emailReport:')) {
-                window.localStorage.removeItem(key);
-            }
-        });
-        // Clear attachments and banner
-        setAttachments([]);
-        setBannerImage(null);
-        setBannerImageName('');
-        window.location.reload();
+      Object.keys(window.localStorage).forEach(key => {
+        if (key.startsWith('emailDispatcher:') || key.startsWith('emailReport:')) {
+          window.localStorage.removeItem(key);
+        }
+      });
+      // Clear attachments and banner
+      setAttachments([]);
+      setBannerImage(null);
+      setBannerImageName('');
+      window.location.reload();
     }
   };
-  
+
   const handleSendAttempt = () => {
     if (!testEmailApproved) {
-        setCurrentReviewTab('preview');
-        setShowTestReminder(true);
-        setTimeout(() => setShowTestReminder(false), 3000);
+      setCurrentReviewTab('preview');
+      setShowTestReminder(true);
+      setTimeout(() => setShowTestReminder(false), 3000);
     }
   };
 
   const handleModeSelect = (selectedMode: Mode) => {
     setMode(selectedMode);
-    if(step === 1) setStep(2);
+    if (step === 1) setStep(2);
   };
 
   const handleSubjectChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newSubject = e.target.value;
     setSubject(newSubject);
-     if (step === 2 && newSubject && rawTemplate) {
-        setStep(3);
+    if (step === 2 && newSubject && rawTemplate) {
+      setStep(3);
     }
   }
-  
+
   const handleSubjectBlur = () => {
     if (step === 2 && subject && rawTemplate) setStep(3);
   }
 
   const handleEditorBlur = () => {
-    if(editorRef.current) {
+    if (editorRef.current) {
       const currentTemplate = editorRef.current.value;
       setRawTemplate(currentTemplate);
-      if(step === 2 && subject && currentTemplate) setStep(3);
+      if (step === 2 && subject && currentTemplate) setStep(3);
     }
   };
 
@@ -524,17 +549,17 @@ export function EmailDispatcher() {
 
   const removeFile = (type: 'template' | 'csv') => {
     if (type === 'template') {
-        setRawTemplate('');
-        setTemplateFileName('');
+      setRawTemplate('');
+      setTemplateFileName('');
     } else if (type === 'csv') {
-        setCsvData([]);
-        setCsvHeaders([]);
-        setCsvFileName('');
+      setCsvData([]);
+      setCsvHeaders([]);
+      setCsvFileName('');
     }
   };
 
   const [userName, setUserName] = useState<string>('');
-  
+
   // Fetch user session to get profile name
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -547,15 +572,15 @@ export function EmailDispatcher() {
         console.error('Error fetching user profile:', error);
       }
     };
-    
+
     fetchUserProfile();
   }, []);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      
+
       {userName && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -568,12 +593,12 @@ export function EmailDispatcher() {
           </div>
         </motion.div>
       )}
-      
+
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold font-headline text-primary-foreground">Email Dispatcher</h1>
         <Button onClick={resetAll} variant="outline" size="sm"><Redo className="mr-2 h-4 w-4" /> Start Over</Button>
       </div>
-      
+
       <StepCard title="Step 1: Select Mode" description="Choose how emails will be sent." step={1} currentStep={step}>
         <RadioGroup value={mode || ''} onValueChange={(value) => handleModeSelect(value as Mode)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -594,399 +619,511 @@ export function EmailDispatcher() {
           </div>
         </RadioGroup>
         {mode === 'bcc' && templatePlaceholders.length > 0 && (
-             <Alert variant="destructive" className="mt-4">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Template Mismatch</AlertTitle>
-                <AlertDescription>Your template contains placeholders, but Bulk BCC mode does not support personalization. Please remove placeholders or choose Personalized mode.</AlertDescription>
-            </Alert>
+          <Alert variant="destructive" className="mt-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Template Mismatch</AlertTitle>
+            <AlertDescription>Your template contains placeholders, but Bulk BCC mode does not support personalization. Please remove placeholders or choose Personalized mode.</AlertDescription>
+          </Alert>
         )}
       </StepCard>
 
-      <StepCard title="Step 2: Compose Email" description="Set the subject and upload your email body." step={2} currentStep={step}>
+      <StepCard title="Step 2: Compose Email" description="Set the subject and write your email body." step={2} currentStep={step}>
         <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="subject">Email Subject</Label>
+          <div className="space-y-2">
+            <Label htmlFor="subject">Email Subject</Label>
+            <div className="flex gap-2">
+              <Input id="subject" value={subject} onChange={handleSubjectChange} onBlur={handleSubjectBlur} placeholder="e.g., Your Weekly Update" />
+              <SubjectOptimizer
+                emailContent={rawTemplate}
+                onSelectSubject={(selected) => {
+                  setSubject(selected);
+                  if (step === 2 && selected && rawTemplate) setStep(3);
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Email Template</Label>
               <div className="flex gap-2">
-                <Input id="subject" value={subject} onChange={handleSubjectChange} onBlur={handleSubjectBlur} placeholder="e.g., Your Weekly Update"/>
-                <SubjectOptimizer
-                  emailContent={rawTemplate}
-                  onSelectSubject={(selected) => {
-                    setSubject(selected);
-                    if (step === 2 && selected && rawTemplate) setStep(3);
-                  }}
-                />
+                <Button
+                  variant={inputMode === 'direct' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setInputMode('direct')}
+                  className="h-8"
+                >
+                  <Edit3 className="h-3.5 w-3.5 mr-1.5" />
+                  Write Directly
+                </Button>
+                <Button
+                  variant={inputMode === 'file' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setInputMode('file')}
+                  className="h-8"
+                >
+                  <Upload className="h-3.5 w-3.5 mr-1.5" />
+                  Upload File
+                </Button>
               </div>
             </div>
-            <div className="space-y-2">
-                <Label>Email Template (.txt or .md)</Label>
-                {templateFileName ? (
-                    <div className="flex items-center justify-between p-3 pl-4 bg-muted/30 rounded-lg border">
-                        <span className="text-sm font-medium">{templateFileName}</span>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeFile('template')}>
-                            <Trash2 className="h-4 w-4 text-destructive"/>
+
+            {inputMode === 'direct' ? (
+              <div className="space-y-2">
+                {mode === 'personalized' && templatePlaceholders.length > 0 && (
+                  <div className="p-3 rounded-lg bg-muted/30 border">
+                    <p className="text-xs text-muted-foreground mb-2">Quick Insert Placeholders:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {templatePlaceholders.map(ph => (
+                        <Button
+                          key={ph}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs font-mono"
+                          onClick={() => {
+                            const textarea = document.querySelector('textarea[placeholder*="Type or paste"]') as HTMLTextAreaElement;
+                            if (textarea) {
+                              const cursorPos = textarea.selectionStart;
+                              const textBefore = rawTemplate.substring(0, cursorPos);
+                              const textAfter = rawTemplate.substring(cursorPos);
+                              setRawTemplate(textBefore + `{{${ph}}}` + textAfter);
+                              setTimeout(() => {
+                                textarea.focus();
+                                textarea.setSelectionRange(cursorPos + ph.length + 2, cursorPos + ph.length + 2);
+                              }, 0);
+                            }
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          {ph}
                         </Button>
+                      ))}
                     </div>
-                ) : (
-                    <>
-                        <Label htmlFor="template-upload">
-                            <FileDropzone
-                                onFileSelect={(file) => processFile(file, 'template')}
-                                accept=".txt,.md"
-                                label="Click or drag to upload template"
-                                description="Please provide a .txt or .md file"
-                            />
-                        </Label>
-                        <Input id="template-upload" type="file" accept=".txt,.md" className="sr-only" onChange={(e) => handleFileChange(e, 'template')} />
-                    </>
+                  </div>
                 )}
+                <Textarea
+                  value={rawTemplate}
+                  onChange={(e) => {
+                    setRawTemplate(e.target.value);
+                    if (step === 2 && subject && e.target.value) setStep(3);
+                  }}
+                  onBlur={handleEditorBlur}
+                  className="min-h-[250px] font-mono text-sm"
+                  placeholder="Type or paste your email template here...\n\nTip: Use placeholders like {{Name}}, {{Company}}, etc. for personalized emails."
+                />
+                <p className="text-xs text-muted-foreground">Supports plain text and markdown formatting</p>
+              </div>
+            ) : (
+              <div>
+                {templateFileName ? (
+                  <div className="flex items-center justify-between p-3 pl-4 bg-muted/30 rounded-lg border">
+                    <span className="text-sm font-medium">{templateFileName}</span>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeFile('template')}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <Label htmlFor="template-upload">
+                      <FileDropzone
+                        onFileSelect={(file) => processFile(file, 'template')}
+                        accept=".txt,.md,.html"
+                        label="Click or drag to upload template"
+                        description="Supports .txt, .md, or .html files"
+                      />
+                    </Label>
+                    <Input id="template-upload" type="file" accept=".txt,.md,.html" className="sr-only" onChange={(e) => handleFileChange(e, 'template')} />
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Sample Templates Section */}
+            <div className="mt-4 p-4 bg-muted/30 rounded-lg border">
+              <p className="text-sm font-medium mb-2">📥 Download Sample Templates:</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <a href="/samples/sample-plain-text.txt" download>
+                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                    Plain Text
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <a href="/samples/sample-markdown.md" download>
+                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                    Markdown
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <a href="/sample-html-template.html" download>
+                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                    HTML
+                  </a>
+                </Button>
+              </div>
             </div>
+          </div>
         </div>
       </StepCard>
 
       <StepCard title="Step 3: Upload Recipients" description="Provide a CSV file with an 'Email' column." step={3} currentStep={step}>
+        {/* Sample CSV Download */}
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertTitle>CSV Format Required</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>Your CSV must include an &apos;Email&apos; column. {mode === 'personalized' && 'Add columns matching your placeholders (e.g., {{FirstName}}, {{Company}}).'}</span>
+            <Button variant="outline" size="sm" asChild className="ml-4">
+              <a href="/samples/sample-recipients.csv" download>
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Sample CSV
+              </a>
+            </Button>
+          </AlertDescription>
+        </Alert>
         {csvFileName ? (
-            <div className="flex items-center justify-between p-3 pl-4 mb-4 bg-muted/30 rounded-lg border">
-                <span className="text-sm font-medium">{csvFileName}</span>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeFile('csv')}>
-                    <Trash2 className="h-4 w-4 text-destructive"/>
-                </Button>
-            </div>
+          <div className="flex items-center justify-between p-3 pl-4 mb-4 bg-muted/30 rounded-lg border">
+            <span className="text-sm font-medium">{csvFileName}</span>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeFile('csv')}>
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
         ) : (
-            <>
-                <Label htmlFor="csv-upload">
-                    <FileDropzone
-                        onFileSelect={(file) => processFile(file, 'csv')}
-                        accept=".csv"
-                        label="Click or drag to upload CSV"
-                        description="File must be .csv and contain an 'Email' column"
-                    />
-                </Label>
-                <Input id="csv-upload" type="file" accept=".csv" className="sr-only" onChange={(e) => handleFileChange(e, 'csv')} />
-            </>
+          <>
+            <Label htmlFor="csv-upload">
+              <FileDropzone
+                onFileSelect={(file) => processFile(file, 'csv')}
+                accept=".csv"
+                label="Click or drag to upload CSV"
+                description="File must be .csv and contain an 'Email' column"
+              />
+            </Label>
+            <Input id="csv-upload" type="file" accept=".csv" className="sr-only" onChange={(e) => handleFileChange(e, 'csv')} />
+          </>
         )}
-        
+
         {validationSummary && (
-        <div className="mt-6 space-y-4">
+          <div className="mt-6 space-y-4">
             {validationSummary.missingColumns.length > 0 && (
-                <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Missing CSV Columns!</AlertTitle>
-                    <AlertDescription>Your template requires these columns which are missing from the CSV: <strong>{validationSummary.missingColumns.join(', ')}</strong>. Please update your CSV.</AlertDescription>
-                </Alert>
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Missing CSV Columns!</AlertTitle>
+                <AlertDescription>Your template requires these columns which are missing from the CSV: <strong>{validationSummary.missingColumns.join(', ')}</strong>. Please update your CSV.</AlertDescription>
+              </Alert>
             )}
             {validationSummary.extraColumns.length > 0 && (
-                 <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Extra CSV Columns</AlertTitle>
-                    <AlertDescription>Note: These columns are in your CSV but not used in the template: {validationSummary.extraColumns.join(', ')}</AlertDescription>
-                </Alert>
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Extra CSV Columns</AlertTitle>
+                <AlertDescription>Note: These columns are in your CSV but not used in the template: {validationSummary.extraColumns.join(', ')}</AlertDescription>
+              </Alert>
             )}
             {validationSummary.invalid > 0 && (
-                <Card>
-                    <CardHeader><CardTitle>Rows with Issues ({validationSummary.invalid})</CardTitle></CardHeader>
-                    <CardContent>
-                        <p className="text-sm text-muted-foreground mb-4">These rows have missing or invalid data and will be skipped. Here's a preview:</p>
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Email</TableHead>
-                                    <TableHead>Missing/Invalid Fields</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {invalidRows.slice(0, 5).map((row, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell>{row.Email}</TableCell>
-                                        <TableCell><span className="text-destructive">{row.missingFields.join(', ')}</span></TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
-                </Card>
+              <Card>
+                <CardHeader><CardTitle>Rows with Issues ({validationSummary.invalid})</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">These rows have missing or invalid data and will be skipped. Here's a preview:</p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Missing/Invalid Fields</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {invalidRows.slice(0, 5).map((row, i) => (
+                        <TableRow key={i}>
+                          <TableCell>{row.Email}</TableCell>
+                          <TableCell><span className="text-destructive">{row.missingFields.join(', ')}</span></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             )}
-        </div>
+          </div>
         )}
       </StepCard>
-      
+
       <StepCard title="Step 4: Review and Send" description="Final check before dispatching the emails." step={4} currentStep={step}>
         <div className="space-y-6">
-            <div className="border-b">
-                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button
-                        onClick={() => setCurrentReviewTab('editor')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${currentReviewTab === 'editor' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
-                    >
-                        Template Editor
-                    </button>
-                    <button
-                        onClick={() => setCurrentReviewTab('preview')}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${currentReviewTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
-                    >
-                        Live Preview &amp; Test
-                    </button>
-                </nav>
-            </div>
-            
-            <div style={{ display: currentReviewTab === 'editor' ? 'block' : 'none' }}>
-                 <div className="space-y-4">
-                    {mode === 'personalized' && templatePlaceholders.length > 0 && (
-                       <div className="p-4 rounded-lg bg-transparent border border-border">
-                           <h3 className="font-semibold mb-2 text-foreground">Available Placeholders</h3>
-                           <p className="text-sm text-muted-foreground mb-4">
-                              Click to copy a placeholder. Placeholders are detected from your template.
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                              {templatePlaceholders.map(ph => 
-                                   <Badge 
-                                       key={ph} 
-                                       variant="outline"
-                                       className="font-mono text-sm border-2 border-solid border-primary/50 bg-transparent hover:bg-primary/20 hover:text-primary-foreground cursor-pointer"
-                                       onClick={() => navigator.clipboard.writeText(`<${ph}>`)}
-                                       title={`Click to copy <${ph}>`}
-                                   >
-                                       {ph}
-                                   </Badge>
-                               )}
-                          </div>
-                      </div>
-                    )}
-                    <div className="flex items-center flex-wrap gap-1 rounded-t-md border border-b-0 p-2 bg-muted/20">
-                         <div className="relative">
-                            <Button asChild variant="ghost" size="sm" className={attachments.length > 0 ? "bg-primary/10" : ""}>
-                                <Label htmlFor="attachment-upload" title="Attach File">
-                                  <Paperclip className="h-4 w-4"/>
-                                  {attachments.length > 0 && (
-                                    <Badge variant="default" className="ml-1 h-5 px-1 text-xs">
-                                      {attachments.length}
-                                    </Badge>
-                                  )}
-                                </Label>
-                            </Button>
-                            <Input id="attachment-upload" type="file" className="sr-only" onChange={(e) => handleFileChange(e, 'attachment')} multiple />
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => setShowBannerEditor(!showBannerEditor)} title="Toggle Banner Image" className={bannerImage ? "bg-primary/10" : ""}>
-                            <ImageIcon className="h-4 w-4" />
-                            {bannerImage && (
-                              <Badge variant="default" className="ml-1 h-5 px-1 text-xs">
-                                1
-                              </Badge>
-                            )}
-                        </Button>
-                         <Input id="banner-upload" type="file" accept="image/*" className="sr-only" onChange={(e) => handleFileChange(e, 'banner')} />
-                    </div>
-                    <div className="relative">
-                        <AnimatePresence>
-                        {showBannerEditor && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                                animate={{ opacity: 1, height: 'auto', marginBottom: '1rem' }}
-                                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                                className="overflow-hidden"
-                            >
-                                <Label htmlFor="banner-upload" className="block cursor-pointer">
-                                    <div className="w-full h-[150px] border-2 border-dashed border-border rounded-lg flex items-center justify-center bg-muted/20 hover:bg-muted/50 transition-colors overflow-hidden">
-                                        {!bannerImage ? (
-                                            <div className="text-center p-6">
-                                                <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto" />
-                                                <span className="mt-2 block text-sm font-medium">Click to upload a banner</span>
-                                                <span className="text-xs text-muted-foreground">Recommended size: 600px wide</span>
-                                            </div>
-                                        ) : (
-                                            <div className="relative w-full h-full group">
-                                                <Image src={bannerImage} alt="Email Banner" fill style={{objectFit: "contain"}} className="p-2" />
-                                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
-                                                    <Button variant="destructive" size="sm" onClick={(e) => { e.preventDefault(); setBannerImage(null); setBannerImageName(''); }}>
-                                                        <Trash2 className="h-4 w-4 mr-2"/> Remove Banner
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </Label>
-                            </motion.div>
-                        )}
-                        </AnimatePresence>
-                         <Textarea
-                            ref={editorRef}
-                            value={rawTemplate}
-                            onChange={(e) => setRawTemplate(e.target.value)}
-                            onBlur={handleEditorBlur}
-                            className="min-h-[300px] w-full rounded-md rounded-t-none border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                            placeholder="Type or paste your email template here..."
-                         />
-                    </div>
-                    {attachments.length > 0 && (
-                        <div className="space-y-2 pt-2">
-                            <Label className="flex items-center gap-2">
-                                <Paperclip className="h-4 w-4" />
-                                Attachments ({attachments.length}):
-                            </Label>
-                            {attachments.map((file, i) => (
-                                <div key={i} className="flex items-center justify-between text-sm bg-muted/50 p-3 rounded-md border border-border/50 hover:bg-muted transition-colors group">
-                                    <span className="font-medium">{file.name}</span>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10" 
-                                        onClick={() => setAttachments((atts) => atts.filter((_: any, idx: number) => idx !== i))}
-                                        title={`Remove ${file.name}`}
-                                    >
-                                        <Trash2 className="h-4 w-4 mr-1"/>
-                                        Remove
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-            
-            <div style={{ display: currentReviewTab === 'preview' ? 'block' : 'none' }}>
-                <div className="space-y-4">
-                    <Label>Live Preview (using first valid row)</Label>
-                    <div className="border rounded-md p-4 min-h-[300px] bg-card">
-                         <div dangerouslySetInnerHTML={{ __html: previewBody }} />
-                    </div>
-                     <AnimatePresence>
-                        {showTestReminder && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                            >
-                                <Alert variant="destructive" className="border-yellow-500/50 text-yellow-500 [&gt;svg]:text-yellow-500">
-                                    <AlertTriangle className="h-4 w-4" />
-                                    <AlertTitle>Approval Required!</AlertTitle>
-                                    <AlertDescription>Please send a test email and approve it below before dispatching.</AlertDescription>
-                                </Alert>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                    <div>
-                         <Label>1. Send a test email to yourself</Label>
-                         <div className="flex gap-2 mt-2">
-                             <Input
-                                 type="email"
-                                 placeholder="your.email@example.com"
-                                 value={testEmail}
-                                 onChange={(e) => setTestEmail(e.target.value)}
-                                 disabled={isSendingTest || testEmailApproved}
-                            />
-                             <Button onClick={handleSendTest} disabled={isSendingTest || !testEmail || testEmailApproved}>
-                                 {isSendingTest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                                 {isSendingTest ? "Sending..." : "Send Test"}
-                             </Button>
-                         </div>
-                     </div>
-                     <div>
-                        <Label>2. Approve the test email</Label>
-                        <div className="mt-2">
-                            <Button 
-                                onClick={approveTest} 
-                                disabled={testEmailApproved || isSendingTest || !testEmailSent}
-                                className={testEmailApproved ? "bg-green-600 hover:bg-green-700" : ""}
-                            >
-                                <ShieldCheck className="mr-2 h-4 w-4" />
-                                {testEmailApproved ? 'Approved!' : 'Approve for Sending'}
-                            </Button>
-                            {testEmailApproved && <p className="text-sm text-green-500 mt-2">You're cleared for takeoff! You can now send the bulk email.</p>}
-                        </div>
-                    </div>
-                </div>
-            </div>
+          <div className="border-b">
+            <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+              <button
+                onClick={() => setCurrentReviewTab('editor')}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${currentReviewTab === 'editor' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
+              >
+                Template Editor
+              </button>
+              <button
+                onClick={() => setCurrentReviewTab('preview')}
+                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${currentReviewTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'}`}
+              >
+                Live Preview &amp; Test
+              </button>
+            </nav>
+          </div>
 
-            {isSending && (
-                <div>
-                     <h3 className="text-lg font-semibold font-headline mb-4">Dispatching Emails...</h3>
-                     <div className="space-y-4">
-                         <Progress value={progress} className="w-full h-2" />
-                         <AnimatePresence mode="wait">
-                            <motion.div
-                                key={currentlySendingTo}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="text-sm text-muted-foreground font-mono"
-                            >
-                                {currentlySendingTo ? `Sending to: ${currentlySendingTo}` : (progress < 100 ? 'Preparing to send...' : 'Dispatch complete!')}
-                            </motion.div>
-                         </AnimatePresence>
-                         <div className="flex justify-between text-sm font-mono">
-                             <span>Sent: {sendStatus.filter(s => s.status === 'Sent').length}</span>
-                             <span className="text-destructive">Failed: {sendStatus.filter(s => s.status === 'Failed').length}</span>
-                             <span>Total: {sendStatus.length} / {validRows.length}</span>
-                         </div>
-                     </div>
-                </div>
-            )}
-            
-            {!isSending && step === 4 && (
-                <div className="border-t pt-6">
-                    {!testEmailApproved && (
-                        <Alert variant="default" className="mb-4 bg-primary/10 border-primary/30">
-                            <ShieldCheck className="h-4 w-4 text-primary" />
-                            <AlertTitle className="text-primary">Final Step: Approval</AlertTitle>
-                            <AlertDescription>
-                                To prevent accidental sends, please send a test email to yourself and approve it in the
-                                <button onClick={() => setCurrentReviewTab('preview')} className="font-bold underline mx-1">Live Preview &amp; Test</button>
-                                tab.
-                            </AlertDescription>
-                        </Alert>
+          <div style={{ display: currentReviewTab === 'editor' ? 'block' : 'none' }}>
+            <div className="space-y-4">
+              {mode === 'personalized' && templatePlaceholders.length > 0 && (
+                <div className="p-4 rounded-lg bg-transparent border border-border">
+                  <h3 className="font-semibold mb-2 text-foreground">Available Placeholders</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Click to copy a placeholder. Placeholders are detected from your template.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {templatePlaceholders.map(ph =>
+                      <Badge
+                        key={ph}
+                        variant="outline"
+                        className="font-mono text-sm border-2 border-solid border-primary/50 bg-transparent hover:bg-primary/20 hover:text-primary-foreground cursor-pointer"
+                        onClick={() => navigator.clipboard.writeText(`<${ph}>`)}
+                        title={`Click to copy <${ph}>`}
+                      >
+                        {ph}
+                      </Badge>
                     )}
-                    <AlertDialog>
-                         <AlertDialogTrigger asChild>
-                             <Button size="lg" disabled={validRows.length === 0 || !testEmailApproved} onClick={handleSendAttempt}>
-                                <Rocket className="mr-2 h-5 w-5" />
-                                Send {validRows.length > 0 ? `${validRows.length} Emails` : 'Emails'}
-                            </Button>
-                        </AlertDialogTrigger>
-                        {testEmailApproved ? (
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>Confirm Dispatch</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        You are about to send <strong className="text-foreground">{validRows.length}</strong> emails. This action is irreversible.
-                                        <br/><br/>
-                                        <strong>Subject:</strong> {subject}
-                                        <br/>
-                                        {bannerImageName && <><strong>Banner:</strong> {bannerImageName}<br/></>}
-                                        {attachments.length > 0 && <><strong>Attachments:</strong> {attachments.map((f:any)=>f.name).join(', ')}</>}
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleSend} disabled={isSending}>Proceed to Launch</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        ) : (
-                           // This content is not shown, but keeps the dialog from erroring when not approved
-                           <AlertDialogContent> 
-                               <AlertDialogHeader>
-                                    <AlertDialogTitle>Approval Required</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                       Please send a test email and approve it before sending the campaign. You can do this in the "Live Preview & Test" tab.
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                               <AlertDialogFooter>
-                                   <AlertDialogAction onClick={()=> setCurrentReviewTab('preview')}>Go to Test</AlertDialogAction>
-                               </AlertDialogFooter>
-                           </AlertDialogContent>
-                        )}
-                    </AlertDialog>
-                    {validRows.length === 0 && csvData.length > 0 && <p className="text-sm text-destructive mt-2">Cannot send: No valid recipient rows found.</p>}
+                  </div>
                 </div>
-            )}
+              )}
+              <div className="flex items-center flex-wrap gap-1 rounded-t-md border border-b-0 p-2 bg-muted/20">
+                <div className="relative">
+                  <Button asChild variant="ghost" size="sm" className={attachments.length > 0 ? "bg-primary/10" : ""}>
+                    <Label htmlFor="attachment-upload" title="Attach File">
+                      <Paperclip className="h-4 w-4" />
+                      {attachments.length > 0 && (
+                        <Badge variant="default" className="ml-1 h-5 px-1 text-xs">
+                          {attachments.length}
+                        </Badge>
+                      )}
+                    </Label>
+                  </Button>
+                  <Input id="attachment-upload" type="file" className="sr-only" onChange={(e) => handleFileChange(e, 'attachment')} multiple />
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setShowBannerEditor(!showBannerEditor)} title="Toggle Banner Image" className={bannerImage ? "bg-primary/10" : ""}>
+                  <ImageIcon className="h-4 w-4" />
+                  {bannerImage && (
+                    <Badge variant="default" className="ml-1 h-5 px-1 text-xs">
+                      1
+                    </Badge>
+                  )}
+                </Button>
+                <Input id="banner-upload" type="file" accept="image/*" className="sr-only" onChange={(e) => handleFileChange(e, 'banner')} />
+              </div>
+              <div className="relative">
+                <AnimatePresence>
+                  {showBannerEditor && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                      animate={{ opacity: 1, height: 'auto', marginBottom: '1rem' }}
+                      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      className="overflow-hidden"
+                    >
+                      <Label htmlFor="banner-upload" className="block cursor-pointer">
+                        <div className="w-full h-[150px] border-2 border-dashed border-border rounded-lg flex items-center justify-center bg-muted/20 hover:bg-muted/50 transition-colors overflow-hidden">
+                          {!bannerImage ? (
+                            <div className="text-center p-6">
+                              <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto" />
+                              <span className="mt-2 block text-sm font-medium">Click to upload a banner</span>
+                              <span className="text-xs text-muted-foreground">Recommended size: 600px wide</span>
+                            </div>
+                          ) : (
+                            <div className="relative w-full h-full group">
+                              <Image src={bannerImage} alt="Email Banner" fill style={{ objectFit: "contain" }} className="p-2" />
+                              <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
+                                <Button variant="destructive" size="sm" onClick={(e) => { e.preventDefault(); setBannerImage(null); setBannerImageName(''); }}>
+                                  <Trash2 className="h-4 w-4 mr-2" /> Remove Banner
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </Label>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <Textarea
+                  ref={editorRef}
+                  value={rawTemplate}
+                  onChange={(e) => setRawTemplate(e.target.value)}
+                  onBlur={handleEditorBlur}
+                  className="min-h-[300px] w-full rounded-md rounded-t-none border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                  placeholder="Type or paste your email template here..."
+                />
+              </div>
+              {attachments.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <Label className="flex items-center gap-2">
+                    <Paperclip className="h-4 w-4" />
+                    Attachments ({attachments.length}):
+                  </Label>
+                  {attachments.map((file, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm bg-muted/50 p-3 rounded-md border border-border/50 hover:bg-muted transition-colors group">
+                      <span className="font-medium">{file.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setAttachments((atts) => atts.filter((_: any, idx: number) => idx !== i))}
+                        title={`Remove ${file.name}`}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: currentReviewTab === 'preview' ? 'block' : 'none' }}>
+            <div className="space-y-4">
+              <Label>Live Preview (using first valid row)</Label>
+              <div className="border rounded-md p-4 min-h-[300px] bg-card">
+                <div dangerouslySetInnerHTML={{ __html: previewBody }} />
+              </div>
+              <AnimatePresence>
+                {showTestReminder && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                  >
+                    <Alert variant="destructive" className="border-yellow-500/50 text-yellow-500 [&gt;svg]:text-yellow-500">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Approval Required!</AlertTitle>
+                      <AlertDescription>Please send a test email and approve it below before dispatching.</AlertDescription>
+                    </Alert>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <div>
+                <Label>1. Send a test email to yourself</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    type="email"
+                    placeholder="your.email@example.com"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    disabled={isSendingTest || testEmailApproved}
+                  />
+                  <Button onClick={handleSendTest} disabled={isSendingTest || !testEmail || testEmailApproved}>
+                    {isSendingTest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    {isSendingTest ? "Sending..." : "Send Test"}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Label>2. Approve the test email</Label>
+                <div className="mt-2">
+                  <Button
+                    onClick={approveTest}
+                    disabled={testEmailApproved || isSendingTest || !testEmailSent}
+                    className={testEmailApproved ? "bg-green-600 hover:bg-green-700" : ""}
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    {testEmailApproved ? 'Approved!' : 'Approve for Sending'}
+                  </Button>
+                  {testEmailApproved && <p className="text-sm text-green-500 mt-2">You're cleared for takeoff! You can now send the bulk email.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {isSending && (
+            <div>
+              <h3 className="text-lg font-semibold font-headline mb-4">Dispatching Emails...</h3>
+              <div className="space-y-4">
+                <Progress value={progress} className="w-full h-2" />
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={currentlySendingTo}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="text-sm text-muted-foreground font-mono"
+                  >
+                    {currentlySendingTo ? `Sending to: ${currentlySendingTo}` : (progress < 100 ? 'Preparing to send...' : 'Dispatch complete!')}
+                  </motion.div>
+                </AnimatePresence>
+                <div className="flex justify-between text-sm font-mono">
+                  <span>Sent: {sendStatus.filter(s => s.status === 'Sent').length}</span>
+                  <span className="text-destructive">Failed: {sendStatus.filter(s => s.status === 'Failed').length}</span>
+                  <span>Total: {sendStatus.length} / {validRows.length}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!isSending && step === 4 && (
+            <div className="border-t pt-6">
+              {!testEmailApproved && (
+                <Alert variant="default" className="mb-4 bg-primary/10 border-primary/30">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  <AlertTitle className="text-primary">Final Step: Approval</AlertTitle>
+                  <AlertDescription>
+                    To prevent accidental sends, please send a test email to yourself and approve it in the
+                    <button onClick={() => setCurrentReviewTab('preview')} className="font-bold underline mx-1">Live Preview &amp; Test</button>
+                    tab.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="lg" disabled={validRows.length === 0 || !testEmailApproved} onClick={handleSendAttempt}>
+                    <Rocket className="mr-2 h-5 w-5" />
+                    Send {validRows.length > 0 ? `${validRows.length} Emails` : 'Emails'}
+                  </Button>
+                </AlertDialogTrigger>
+                {testEmailApproved ? (
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Confirm Dispatch</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        You are about to send <strong className="text-foreground">{validRows.length}</strong> emails. This action is irreversible.
+                        <br /><br />
+                        <strong>Subject:</strong> {subject}
+                        <br />
+                        {bannerImageName && <><strong>Banner:</strong> {bannerImageName}<br /></>}
+                        {attachments.length > 0 && <><strong>Attachments:</strong> {attachments.map((f: any) => f.name).join(', ')}</>}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleSend} disabled={isSending}>Proceed to Launch</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                ) : (
+                  // This content is not shown, but keeps the dialog from erroring when not approved
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Approval Required</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Please send a test email and approve it before sending the campaign. You can do this in the "Live Preview & Test" tab.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogAction onClick={() => setCurrentReviewTab('preview')}>Go to Test</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                )}
+              </AlertDialog>
+              {validRows.length === 0 && csvData.length > 0 && <p className="text-sm text-destructive mt-2">Cannot send: No valid recipient rows found.</p>}
+            </div>
+          )}
         </div>
       </StepCard>
     </div>
   );
 }
-    
-    
 
-    
+
+
+
 
 

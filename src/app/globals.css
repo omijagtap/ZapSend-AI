@@ -29,6 +29,23 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    
+    /* Semantic colors for professional UI */
+    --success: 142 71% 45%;
+    --success-light: 142 71% 95%;
+    --warning: 38 92% 50%;  
+    --warning-light: 38 92% 95%;
+    --error: 0 84% 60%;
+    --error-light: 0 84% 97%;
+    --info: 217 91% 60%;
+    --info-light: 217 91% 97%;
+    
+    /* Enhanced shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.15);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.2);
+    --shadow-glow: 0 0 20px 0 rgb(102 126 234 / 0.3);
   }
 }
 
@@ -36,19 +53,91 @@
   * {
     @apply border-border;
   }
+  
   body {
     @apply bg-background text-foreground;
+    /* Reduce base font size by 20%: 16px → 13px */
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  
+  /* Font size reductions (20% smaller) */
+  h1 {
+    font-size: 1.8rem; /* ~23px, was ~29px */
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  
+  h2 {
+    font-size: 1.5rem; /* ~19px, was ~24px */
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  
+  h3 {
+    font-size: 1.2rem; /* ~16px, was ~19px */
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  
+  h4 {
+    font-size: 1rem; /* ~13px, was ~16px */
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  
+  p {
+    font-size: 1rem; /* ~13px, was ~16px */
+    line-height: 1.6;
+  }
+  
+  small, .text-sm {
+    font-size: 0.85rem; /* ~11px, was ~14px */
+  }
+  
+  .text-xs {
+    font-size: 0.75rem; /* ~10px, was ~12px */
   }
 }
 
 @layer components {
-    .glass-effect {
-        @apply bg-white/10 backdrop-blur-lg border border-white/20 shadow-lg;
+  .glass-effect {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20;
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .border-gradient {
+    border: 2px solid;
+    border-image-slice: 1;
+    border-width: 2px;
+    border-image-source: linear-gradient(to right, hsl(var(--primary)), hsl(var(--accent)));
+  }
+  
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-lg hover:scale-[1.01];
+  }
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white font-medium;
+    @apply hover:from-[#5568d3] to-[#653a8b] transition-all duration-200;
+    box-shadow: var(--shadow);
+    font-size: 0.9rem; /* Reduced from ~1.1rem */
+  }
+  
+  .container-responsive {
+    @apply w-full mx-auto px-4 sm:px-6 lg:px-8;
+    max-width: 100%;
+  }
+  
+  @media (min-width: 1024px) {
+    .container-responsive {
+      max-width: 1200px;
     }
-    .border-gradient {
-        border: 2px solid;
-        border-image-slice: 1;
-        border-width: 2px;
-        border-image-source: linear-gradient(to right, hsl(var(--primary)), hsl(var(--accent)));
+  }
+  
+  @media (min-width: 1280px) {
+    .container-responsive {
+      max-width: 1400px;
     }
+  }
 }
