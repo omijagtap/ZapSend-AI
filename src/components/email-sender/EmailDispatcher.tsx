@@ -445,7 +445,7 @@ export function EmailDispatcher() {
         console.log('Total email records saved:', existingRecords.length);
       }
 
-      router.push('/dashboard');
+      router.push('/dashboard/report');
     }
 
     setCurrentlySendingTo('');
