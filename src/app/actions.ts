@@ -137,12 +137,27 @@ export async function verifyCredentialsAndLogin(email: string, appPassword: stri
                 <p style="text-align: center; margin-top: 20px; font-size: 12px; color: #999;">© 2025 ZapSend AI. All rights reserved.</p>
             </div>`;
 
-        await sendEmailInternal(transporter, {
+        const result = await sendEmailInternal(transporter, {
             to: email,
             subject: verificationSubject,
             html: verificationHtml,
             from: email,
         });
+
+        // Verify that the email was accepted by the SMTP server
+        if (result.rejected && result.rejected.length > 0) {
+            return {
+                success: false,
+                error: `Verification email was rejected by the server. The email address may be invalid or blocked: ${result.rejected.join(', ')}`
+            };
+        }
+
+        if (!result.accepted || result.accepted.length === 0) {
+            return {
+                success: false,
+                error: 'Verification email was not accepted by the server. Please check your email address and try again.'
+            };
+        }
 
         await setSessionCookie(email, appPassword);
 
@@ -227,11 +242,14 @@ interface SendEmailParams {
     attachments?: AttachmentData[];
 }
 
-async function sendEmailInternal(transporter: nodemailer.Transporter, params: SendEmailParams & { from: string }) {
+async function sendEmailInternal(transporter: nodemailer.Transporter, params: SendEmailParams & { from: string }): Promise<{ messageId?: string; accepted?: string[]; rejected?: string[]; }> {
     const { to, subject, html, attachments = [], from } = params;
 
+    // Extract name from email (part before @)
+    const senderName = from.split('@')[0];
+
     const mailOptions: nodemailer.SendMailOptions = {
-        from: `ZapSend AI <${from}>`,
+        from: `${senderName} <${from}>`,
         to: Array.isArray(to) ? undefined : to,
         bcc: Array.isArray(to) ? to.join(', ') : undefined,
         subject: subject,
@@ -245,8 +263,18 @@ async function sendEmailInternal(transporter: nodemailer.Transporter, params: Se
         }))
     };
 
+    // Verify connection before sending
     await transporter.verify();
-    await transporter.sendMail(mailOptions);
+
+    // Send email and capture response info
+    const info = await transporter.sendMail(mailOptions);
+
+    // Return detailed response information for better tracking
+    return {
+        messageId: info.messageId,
+        accepted: info.accepted as string[] | undefined,
+        rejected: info.rejected as string[] | undefined,
+    };
 }
 
 
@@ -271,23 +299,104 @@ export async function sendEmail({ to, subject, html, attachments = [] }: SendEma
             pass: authPass,
         },
         connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 10000, // 10 seconds
+        socketTimeout: 20000, // 20 seconds - prevents hanging
+        pool: true, // Use connection pooling for better performance
+        maxConnections: 20, // Allow up to 20 concurrent connections for maximum speed
+        maxMessages: 100, // Reuse connection for up to 100 messages
     });
 
-    try {
-        await sendEmailInternal(transporter, { to, subject, html, attachments, from: senderEmail });
-        return { success: true };
-    } catch (error: any) {
-        console.error("Error sending email:", error);
-        let errorMessage = 'Failed to send email.';
-        if (error.code === 'EAUTH') {
-            errorMessage = 'Authentication error. Your app password might have changed. Please log in again.';
-        } else if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ESOCKET') {
-            errorMessage = 'Could not connect to the mail server. Please check your network connection.';
-        } else if (error.message) {
-            errorMessage = error.message;
+    const MAX_RETRIES = 2;
+    let lastError: any;
+
+    // Retry logic for transient failures
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            // Add timeout wrapper to prevent indefinite hanging
+            const sendPromise = sendEmailInternal(transporter, { to, subject, html, attachments, from: senderEmail });
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('Email send operation timed out after 25 seconds')), 25000);
+            });
+
+            const result = await Promise.race([sendPromise, timeoutPromise]);
+
+            // Check if any emails were rejected by the SMTP server
+            if (result.rejected && result.rejected.length > 0) {
+                transporter.close();
+                return {
+                    success: false,
+                    error: `Email rejected by server for: ${result.rejected.join(', ')}. The recipient address may be invalid or blocked.`
+                };
+            }
+
+            // Verify that emails were accepted
+            if (Array.isArray(to)) {
+                // For BCC mode, check if all emails were accepted
+                const expectedCount = to.length;
+                const acceptedCount = result.accepted?.length || 0;
+
+                if (acceptedCount < expectedCount) {
+                    transporter.close();
+                    return {
+                        success: false,
+                        error: `Only ${acceptedCount} out of ${expectedCount} emails were accepted by the server. Some recipients may be invalid.`
+                    };
+                }
+            } else {
+                // For single email, verify it was accepted
+                if (!result.accepted || result.accepted.length === 0) {
+                    transporter.close();
+                    return {
+                        success: false,
+                        error: 'Email was not accepted by the server. The recipient address may be invalid.'
+                    };
+                }
+            }
+
+            // Close transporter after successful send
+            transporter.close();
+            return { success: true };
+        } catch (error: any) {
+            lastError = error;
+            console.error(`Error sending email (attempt ${attempt + 1}/${MAX_RETRIES + 1}):`, error);
+
+            // Don't retry on authentication errors
+            if (error.code === 'EAUTH') {
+                transporter.close();
+                return {
+                    success: false,
+                    error: 'Authentication error. Your app password might have changed. Please log in again.'
+                };
+            }
+
+            // Retry on transient errors
+            if (attempt < MAX_RETRIES && (
+                error.code === 'ECONNRESET' ||
+                error.code === 'ETIMEDOUT' ||
+                error.code === 'ESOCKET' ||
+                error.message?.includes('timeout')
+            )) {
+                // Wait before retrying (exponential backoff)
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                continue;
+            }
+
+            // Don't retry on other errors
+            break;
         }
-        return { success: false, error: errorMessage };
     }
+
+    // Close transporter after all attempts
+    transporter.close();
+
+    // Return final error
+    let errorMessage = 'Failed to send email.';
+    if (lastError?.code === 'ECONNRESET' || lastError?.code === 'ETIMEDOUT' || lastError?.code === 'ESOCKET') {
+        errorMessage = 'Could not connect to the mail server. Please check your network connection.';
+    } else if (lastError?.message) {
+        errorMessage = lastError.message;
+    }
+    return { success: false, error: errorMessage };
 }
 
 export async function logout() {

@@ -359,6 +359,7 @@ export function EmailDispatcher() {
     let finalSendStatus: SendStatus[] = [];
     setCurrentlySendingTo('');
 
+    // Process attachments once (not per email)
     const attachmentData = await Promise.all(
       attachments.map(async (file) => ({
         filename: file.name,
@@ -392,23 +393,93 @@ export function EmailDispatcher() {
       setProgress(100);
 
     } else if (mode === 'personalized') {
-      let temporarySendStatus: SendStatus[] = [];
-      for (let i = 0; i < validRows.length; i++) {
-        const row = validRows[i];
-        setCurrentlySendingTo(row.Email);
-        const html = generateEmailBody(currentTemplate, row);
-        const result = await sendEmail({ to: row.Email, subject, html, attachments: attachmentData });
+      // Optimized batch processing with concurrency control
+      const BATCH_SIZE = 20; // Send 20 emails concurrently for maximum speed
+      const EMAIL_TIMEOUT = 30000; // 30 seconds timeout per email
 
-        const currentStatus: SendStatus = { email: row.Email, status: result.success ? 'Sent' : 'Failed', error: result.error };
-        temporarySendStatus.push(currentStatus);
+      let temporarySendStatus: SendStatus[] = [];
+      let completedCount = 0;
+
+      // Helper function to send a single email with timeout protection
+      const sendWithTimeout = async (row: CSVRow): Promise<SendStatus> => {
+        const timeoutPromise = new Promise<SendStatus>((resolve) => {
+          setTimeout(() => {
+            resolve({
+              email: row.Email,
+              status: 'Failed',
+              error: 'Email sending timed out after 30 seconds'
+            });
+          }, EMAIL_TIMEOUT);
+        });
+
+        const sendPromise = (async (): Promise<SendStatus> => {
+          try {
+            const html = generateEmailBody(currentTemplate, row);
+            const result = await sendEmail({
+              to: row.Email,
+              subject,
+              html,
+              attachments: attachmentData
+            });
+
+            return {
+              email: row.Email,
+              status: result.success ? 'Sent' : 'Failed',
+              error: result.error
+            };
+          } catch (error: any) {
+            return {
+              email: row.Email,
+              status: 'Failed',
+              error: error.message || 'Unknown error occurred'
+            };
+          }
+        })();
+
+        // Race between timeout and actual send
+        return Promise.race([sendPromise, timeoutPromise]);
+      };
+
+      // Process emails in batches
+      for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+        const batch = validRows.slice(i, i + BATCH_SIZE);
+
+        // Update UI to show current batch
+        setCurrentlySendingTo(
+          batch.length === 1
+            ? batch[0].Email
+            : `Batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} emails)`
+        );
+
+        // Send batch concurrently with timeout protection
+        const batchResults = await Promise.all(
+          batch.map(row => sendWithTimeout(row))
+        );
+
+        // Update status
+        temporarySendStatus.push(...batchResults);
+        completedCount += batchResults.length;
+
+        // Update progress
         setSendStatus([...temporarySendStatus]);
-        setProgress(((i + 1) / validRows.length) * 100);
+        setProgress((completedCount / validRows.length) * 100);
+
+        // Small delay between batches to avoid overwhelming the SMTP server
+        if (i + BATCH_SIZE < validRows.length) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay for faster sending
+        }
       }
+
       finalSendStatus = [...temporarySendStatus];
     }
 
+    // Add skipped emails
     invalidRows.forEach(row => {
-      finalSendStatus.push({ email: row.Email || 'Invalid Email Entry', status: 'Skipped', error: `Missing fields: ${row.missingFields.join(', ')}` });
+      finalSendStatus.push({
+        email: row.Email || 'Invalid Email Entry',
+        status: 'Skipped',
+        error: `Missing fields: ${row.missingFields.join(', ')}`
+      });
     });
 
     if (typeof window !== 'undefined' && validationSummary) {
@@ -449,7 +520,10 @@ export function EmailDispatcher() {
     }
 
     setCurrentlySendingTo('');
-    toast({ title: "Dispatch Complete", description: `Processed ${validRows.length} emails.` });
+    toast({
+      title: "Dispatch Complete",
+      description: `Processed ${validRows.length} emails. ${finalSendStatus.filter(s => s.status === 'Sent').length} sent successfully.`
+    });
     setIsSending(false);
   };
 

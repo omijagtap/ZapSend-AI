@@ -182,6 +182,17 @@ export default function ReportPage() {
                             <CardDescription>A record of every email that was processed in this campaign.</CardDescription>
                         </CardHeader>
                         <CardContent>
+                            <div className="mb-4 p-3 bg-muted/30 rounded-lg border text-sm">
+                                <p className="font-semibold mb-2">📊 Status Meanings:</p>
+                                <ul className="space-y-1 text-muted-foreground">
+                                    <li><strong className="text-green-600">Sent:</strong> Email was accepted by the SMTP server and queued for delivery</li>
+                                    <li><strong className="text-destructive">Failed:</strong> Email was rejected by the server or encountered an error</li>
+                                    <li><strong className="text-yellow-600">Skipped:</strong> Email had invalid data (missing fields or invalid format)</li>
+                                </ul>
+                                <p className="mt-2 text-xs text-muted-foreground italic">
+                                    Note: "Sent" means the email was accepted by the server, but doesn't guarantee inbox delivery. Emails may still bounce or go to spam.
+                                </p>
+                            </div>
                             <div className="max-h-[500px] overflow-auto">
                                 <Table>
                                     <TableHeader className="sticky top-0 bg-card/80 backdrop-blur-sm">
