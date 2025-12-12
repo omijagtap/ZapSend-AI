@@ -1,15 +1,15 @@
 const nodemailer = require('nodemailer');
 
-// Test Gmail credentials
-const email = 'harshmoremm2195@gmail.com';
-const appPassword = 'qtoaltkugvhiqhkq';
+// Test UpGrad email credentials
+const email = 'intlesgcidba@upgrad.com';
+const appPassword = 'fvvcmkbfppxwttsp';
 
-console.log('Testing Gmail SMTP connection...');
+console.log('Testing UpGrad (Office365) SMTP connection...');
 console.log('Email:', email);
-console.log('Using SMTP: smtp.gmail.com:587');
+console.log('Using SMTP: smtp.office365.com:587');
 
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
+    host: 'smtp.office365.com',
     port: 587,
     secure: false,
     requireTLS: true,

@@ -4,12 +4,6 @@ import { optimizeSubjectLine, OptimizeSubjectLineInput } from '@/ai/flows/subjec
 import nodemailer from 'nodemailer';
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import https from 'https';
-import sslRootCas from 'ssl-root-cas';
-
-
-// Fix for SSL issues in some environments
-https.globalAgent.options.ca = sslRootCas.create();
 
 // Email provider configurations
 interface SMTPConfig {
@@ -31,6 +25,10 @@ const SMTP_CONFIGS: Record<string, SMTPConfig> = {
         port: 587,
     },
     live: {
+        host: 'smtp.office365.com',
+        port: 587,
+    },
+    upgrad: {
         host: 'smtp.office365.com',
         port: 587,
     },
@@ -94,6 +92,13 @@ export async function verifyCredentialsAndLogin(email: string, appPassword: stri
     // Get SMTP configuration based on email provider
     const smtpConfig = getSMTPConfig(email);
 
+    // Log configuration for debugging (without sensitive data)
+    console.log('[Vercel Debug] SMTP Config:', {
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        email: email.replace(/(.{3}).*(@.*)/, '$1***$2') // Partially hide email
+    });
+
     const transporter = nodemailer.createTransport({
         host: smtpConfig.host,
         port: smtpConfig.port,
@@ -103,8 +108,11 @@ export async function verifyCredentialsAndLogin(email: string, appPassword: stri
             user: email,
             pass: appPassword,
         },
-        connectionTimeout: 10000, // 10 seconds
-        greetingTimeout: 10000, // 10 seconds
+        connectionTimeout: 15000, // Increased to 15 seconds for Vercel
+        greetingTimeout: 15000, // Increased to 15 seconds for Vercel
+        socketTimeout: 20000, // Added socket timeout for Vercel
+        logger: process.env.NODE_ENV === 'development', // Enable logging in dev
+        debug: process.env.NODE_ENV === 'development', // Enable debug in dev
     });
 
     try {
@@ -289,6 +297,13 @@ export async function sendEmail({ to, subject, html, attachments = [] }: SendEma
     // Get SMTP configuration based on email provider
     const smtpConfig = getSMTPConfig(senderEmail);
 
+    // Log for debugging on Vercel
+    console.log('[Vercel Debug] Sending email with config:', {
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        recipientCount: Array.isArray(to) ? to.length : 1
+    });
+
     const transporter = nodemailer.createTransport({
         host: smtpConfig.host,
         port: smtpConfig.port,
@@ -298,12 +313,14 @@ export async function sendEmail({ to, subject, html, attachments = [] }: SendEma
             user: senderEmail,
             pass: authPass,
         },
-        connectionTimeout: 10000, // 10 seconds
-        greetingTimeout: 10000, // 10 seconds
-        socketTimeout: 20000, // 20 seconds - prevents hanging
+        connectionTimeout: 15000, // Increased to 15 seconds for Vercel
+        greetingTimeout: 15000, // Increased to 15 seconds for Vercel
+        socketTimeout: 25000, // Increased to 25 seconds for Vercel
         pool: true, // Use connection pooling for better performance
         maxConnections: 20, // Allow up to 20 concurrent connections for maximum speed
         maxMessages: 100, // Reuse connection for up to 100 messages
+        logger: process.env.NODE_ENV === 'development', // Enable logging in dev
+        debug: process.env.NODE_ENV === 'development', // Enable debug in dev
     });
 
     const MAX_RETRIES = 2;

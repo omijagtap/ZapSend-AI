@@ -1,4 +1,4 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -35,7 +35,8 @@ const nextConfig: NextConfig = {
       // Allow storing more data in the session cookies
       bodySizeLimit: '4mb',
     },
-  }
+  },
+  serverExternalPackages: ['nodemailer'],
 };
 
 export default nextConfig;
