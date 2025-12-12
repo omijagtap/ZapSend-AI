@@ -3,8 +3,8 @@
 ## ⚠️ CRITICAL: Credentials Were Exposed on GitHub
 
 The file `test-gmail-smtp.js` contained hardcoded credentials that were pushed to GitHub:
-- Email: `intlesgcidba@upgrad.com`
-- App Password: `fvvcmkbfppxwttsp`
+- Email: `int***@upgrad.com` (redacted)
+- App Password: `fvv***ttsp` (redacted)
 
 ## ✅ Immediate Actions Taken
 
@@ -18,7 +18,7 @@ The file `test-gmail-smtp.js` contained hardcoded credentials that were pushed t
 
 1. Go to: https://account.microsoft.com/security
 2. Find "App passwords" section
-3. **Delete** the old app password: `fvvcmkbfppxwttsp`
+3. **Delete** the old/exposed app password
 4. **Generate** a new app password
 5. Save the new password in your `.env` file
 
@@ -29,7 +29,7 @@ The file `test-gmail-smtp.js` contained hardcoded credentials that were pushed t
 Add these lines to your `.env` file (which is NOT committed to Git):
 
 ```env
-TEST_EMAIL=intlesgcidba@upgrad.com
+TEST_EMAIL=your-email@upgrad.com
 TEST_APP_PASSWORD=your-new-app-password-here
 ```
 

@@ -57,8 +57,8 @@ vercel --prod
 
 ### Step 4: Test on Vercel
 1. Go to your deployed app
-2. Login with: `intlesgcidba@upgrad.com`
-3. Use app password: `fvvcmkbfppxwttsp`
+2. Login with your UpGrad email credentials
+3. Use your app password (stored securely)
 4. Try sending a test email
 
 ## What Changed in the Code
