@@ -1,8 +1,10 @@
+require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-// Test UpGrad email credentials
-const email = 'intlesgcidba@upgrad.com';
-const appPassword = 'fvvcmkbfppxwttsp';
+// IMPORTANT: Never commit credentials to Git!
+// Set these in your .env file (which is gitignored)
+const email = process.env.TEST_EMAIL || 'your-email@example.com';
+const appPassword = process.env.TEST_APP_PASSWORD || 'your-app-password-here';
 
 console.log('Testing UpGrad (Office365) SMTP connection...');
 console.log('Email:', email);
